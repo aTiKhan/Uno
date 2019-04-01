@@ -699,6 +699,16 @@ namespace SampleControl.Presentation
 				var vm = Activator.CreateInstance(newContent.ViewModelType, fe.Dispatcher);
 				fe.DataContext = vm;
 
+				if(vm is IDisposable disposable)
+				{
+					void Dispose(object snd, RoutedEventArgs e)
+					{
+						fe.Unloaded -= Dispose;
+						disposable.Dispose();
+					}
+
+					fe.Unloaded += Dispose;
+				}
 			}
 
 
