@@ -60,6 +60,7 @@
 * [WASM] Support `not_wasm` prefix properly. (#784)
 * 151282 [iOS] Fixed Slider not responding on second navigation, fixed RemoveHandler for RoutedEvents removing all instances of handler 
 * 151497 [iOS/Android] Fixed Slider not responding, by ^ RemoveHandler fix for RoutedEvents 
+* 151676 [iOS] The keyboard is closing when tap on the webview or toolbar
 
 ## Release 1.44.0
 

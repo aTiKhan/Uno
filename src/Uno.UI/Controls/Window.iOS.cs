@@ -296,7 +296,19 @@ namespace Uno.UI.Controls
 
 		private static bool GetNeedsKeyboard(UIView view)
 		{
-			return view != null && _attachedProperties.GetValue(view, NeedsKeyboardAttachedPropertyKey, () => default(bool?)).GetValueOrDefault();
+			var currentView = view;
+
+			while (currentView != null)
+			{
+				if (_attachedProperties.GetValue(currentView, NeedsKeyboardAttachedPropertyKey, () => default(bool?)).GetValueOrDefault())
+				{
+					return true;
+				}
+
+				currentView = currentView.Superview;
+			}
+
+			return false;
 		}
 
 		private static bool NeedsKeyboard(UIView view)
