@@ -129,7 +129,7 @@ declare namespace Uno.UI {
             * @param containerElementId The ID of the container element for the Xaml UI
             * @param loadingElementId The ID of the loading element to remove once ready
             */
-        static init(localStoragePath: string, isHosted: boolean, isLoadEventsEnabled: boolean, containerElementId?: string, loadingElementId?: string): string;
+        static init(isHosted: boolean, isLoadEventsEnabled: boolean, containerElementId?: string, loadingElementId?: string): string;
         /**
          * Builds a promise that will signal the ability for the dispatcher
          * to initiate work.
@@ -150,20 +150,8 @@ declare namespace Uno.UI {
         private allActiveElementsById;
         private static resizeMethod;
         private static dispatchEventMethod;
+        private static getDependencyPropertyValueMethod;
         private constructor();
-        /**
-         * Setup the storage persistence
-         *
-         * */
-        static setupStorage(localStoragePath: string): void;
-        /**
-         * Determine if IndexDB is available, some browsers and modes disable it.
-         * */
-        static isIndexDBAvailable(): boolean;
-        /**
-         * Synchronize the IDBFS memory cache back to IndexDB
-         * */
-        static synchronizeFileSystem(): void;
         /**
             * Creates the UWP-compatible splash screen
             *
@@ -202,11 +190,28 @@ declare namespace Uno.UI {
         setNameNative(pParam: number): boolean;
         private setNameInternal;
         /**
+            * Set a name for an element.
+            *
+            * This is mostly for diagnostic purposes.
+            */
+        setXUid(elementId: number, name: string): string;
+        /**
+            * Set a name for an element.
+            *
+            * This is mostly for diagnostic purposes.
+            */
+        setXUidNative(pParam: number): boolean;
+        private setXUidInternal;
+        /**
             * Set an attribute for an element.
             */
-        setAttribute(elementId: number, attributes: {
+        setAttributes(elementId: number, attributes: {
             [name: string]: string;
         }): string;
+        /**
+            * Set an attribute for an element.
+            */
+        setAttributesNative(pParams: number): boolean;
         /**
             * Set an attribute for an element.
             */
@@ -266,10 +271,17 @@ declare namespace Uno.UI {
         resetStyleNative(pParams: number): boolean;
         private resetStyleInternal;
         /**
+         * Set CSS classes on an element
+         */
+        setClasses(elementId: number, cssClassesList: string[], classIndex: number): string;
+        setClassesNative(pParams: number): boolean;
+        /**
         * Arrange and clips a native elements
         *
         */
         arrangeElementNative(pParams: number): boolean;
+        private setAsArranged;
+        private setAsUnarranged;
         /**
         * Sets the transform matrix of an element
         *
@@ -426,6 +438,8 @@ declare namespace Uno.UI {
             * @param maxHeight string containing height in pixels. Empty string means infinite.
             */
         measureViewNative(pParams: number, pReturn: number): boolean;
+        private static MAX_WIDTH;
+        private static MAX_HEIGHT;
         private measureViewInternal;
         setImageRawData(viewId: number, dataPtr: number, width: number, height: number): string;
         /**
@@ -454,6 +468,26 @@ declare namespace Uno.UI {
         setHtmlContentNative(pParams: number): boolean;
         private setHtmlContentInternal;
         /**
+         * Gets the Client and Offset size of the specified element
+         *
+         * This method is used to determine the size of the scroll bars, to
+         * mask the events coming from that zone.
+         */
+        getClientViewSize(elementId: number): string;
+        /**
+         * Gets the Client and Offset size of the specified element
+         *
+         * This method is used to determine the size of the scroll bars, to
+         * mask the events coming from that zone.
+         */
+        getClientViewSizeNative(pParams: number, pReturn: number): boolean;
+        /**
+         * Gets a dependency property value.
+         *
+         * Note that the casing of this method is intentionally Pascal for platform alignment.
+         */
+        GetDependencyPropertyValue(elementId: number, propertyName: string): string;
+        /**
             * Remove the loading indicator.
             *
             * In a future version it will also handle the splashscreen.
@@ -467,6 +501,11 @@ declare namespace Uno.UI {
         private dispatchEvent;
         private getIsConnectedToRootElement;
     }
+}
+declare class StorageFolderMakePersistentParams {
+    Paths_Length: number;
+    Paths: Array<string>;
+    static unmarshal(pData: number): StorageFolderMakePersistentParams;
 }
 declare class WindowManagerAddViewParams {
     HtmlId: number;
@@ -514,8 +553,18 @@ declare class WindowManagerGetBBoxReturn {
     Height: number;
     marshal(pData: number): void;
 }
+declare class WindowManagerGetClientViewSizeParams {
+    HtmlId: number;
+    static unmarshal(pData: number): WindowManagerGetClientViewSizeParams;
+}
+declare class WindowManagerGetClientViewSizeReturn {
+    OffsetWidth: number;
+    OffsetHeight: number;
+    ClientWidth: number;
+    ClientHeight: number;
+    marshal(pData: number): void;
+}
 declare class WindowManagerInitParams {
-    LocalFolderPath: string;
     IsHostedMode: boolean;
     IsLoadEventsEnabled: boolean;
     static unmarshal(pData: number): WindowManagerInitParams;
@@ -552,9 +601,22 @@ declare class WindowManagerResetStyleParams {
 }
 declare class WindowManagerSetAttributeParams {
     HtmlId: number;
+    Name: string;
+    Value: string;
+    static unmarshal(pData: number): WindowManagerSetAttributeParams;
+}
+declare class WindowManagerSetAttributesParams {
+    HtmlId: number;
     Pairs_Length: number;
     Pairs: Array<string>;
-    static unmarshal(pData: number): WindowManagerSetAttributeParams;
+    static unmarshal(pData: number): WindowManagerSetAttributesParams;
+}
+declare class WindowManagerSetClassesParams {
+    HtmlId: number;
+    CssClasses_Length: number;
+    CssClasses: Array<string>;
+    Index: number;
+    static unmarshal(pData: number): WindowManagerSetClassesParams;
 }
 declare class WindowManagerSetContentHtmlParams {
     HtmlId: number;
@@ -594,6 +656,11 @@ declare class WindowManagerSetStylesParams {
     Pairs_Length: number;
     Pairs: Array<string>;
     static unmarshal(pData: number): WindowManagerSetStylesParams;
+}
+declare class WindowManagerSetXUidParams {
+    HtmlId: number;
+    Uid: string;
+    static unmarshal(pData: number): WindowManagerSetXUidParams;
 }
 declare module Uno.UI {
     interface IAppManifest {
@@ -662,6 +729,73 @@ declare const MonoRuntime: Uno.UI.Interop.IMonoRuntime;
 declare const WebAssemblyApp: Uno.UI.Interop.IWebAssemblyApp;
 declare const UnoAppManifest: Uno.UI.IAppManifest;
 declare const UnoDispatch: Uno.UI.Interop.IUnoDispatch;
+declare namespace Windows.Storage {
+    class StorageFolder {
+        private static _isInit;
+        /**
+         * Determine if IndexDB is available, some browsers and modes disable it.
+         * */
+        static isIndexDBAvailable(): boolean;
+        /**
+         * Setup the storage persistence of a given set of paths.
+         * */
+        private static makePersistent;
+        /**
+         * Setup the storage persistence of a given path.
+         * */
+        static setupStorage(path: string): void;
+        /**
+         * Synchronize the IDBFS memory cache back to IndexDB
+         * */
+        private static synchronizeFileSystem;
+    }
+}
+interface Window {
+    DeviceMotionEvent(): void;
+}
+declare namespace Windows.Devices.Sensors {
+    class Accelerometer {
+        private static dispatchReading;
+        static initialize(): boolean;
+        static startReading(): void;
+        static stopReading(): void;
+        private static readingChangedHandler;
+    }
+}
+declare class Gyroscope {
+    constructor(config: any);
+    addEventListener(type: "reading" | "activate", listener: (this: this, ev: Event) => any, useCapture?: boolean): void;
+}
+interface Window {
+    Gyroscope: Gyroscope;
+}
+declare namespace Windows.Devices.Sensors {
+    class Gyrometer {
+        private static dispatchReading;
+        private static gyroscope;
+        static initialize(): boolean;
+        static startReading(): void;
+        static stopReading(): void;
+        private static readingChangedHandler;
+    }
+}
+declare class Magnetometer {
+    constructor(config: any);
+    addEventListener(type: "reading" | "activate", listener: (this: this, ev: Event) => any, useCapture?: boolean): void;
+}
+interface Window {
+    Magnetometer: Magnetometer;
+}
+declare namespace Windows.Devices.Sensors {
+    class Magnetometer {
+        private static dispatchReading;
+        private static magnetometer;
+        static initialize(): boolean;
+        static startReading(): void;
+        static stopReading(): void;
+        private static readingChangedHandler;
+    }
+}
 declare namespace Windows.UI.Core {
     class SystemNavigationManager {
         private static _current;
@@ -671,5 +805,27 @@ declare namespace Windows.UI.Core {
         enable(): void;
         disable(): void;
         private clearStack;
+    }
+}
+declare namespace Windows.UI.Xaml {
+    class Application {
+        static getDefaultSystemTheme(): string;
+    }
+}
+declare namespace Windows.UI.Xaml {
+    enum ApplicationTheme {
+        Light = "Light",
+        Dark = "Dark"
+    }
+}
+interface Navigator {
+    webkitVibrate(pattern: number | number[]): boolean;
+    mozVibrate(pattern: number | number[]): boolean;
+    msVibrate(pattern: number | number[]): boolean;
+}
+declare namespace Windows.Phone.Devices.Notification {
+    class VibrationDevice {
+        static initialize(): boolean;
+        static vibrate(duration: number): boolean;
     }
 }

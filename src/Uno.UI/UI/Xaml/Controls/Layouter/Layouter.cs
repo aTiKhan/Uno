@@ -130,6 +130,11 @@ namespace Windows.UI.Xaml.Controls
 				}
 
 				ArrangeOverride(finalRect.Size);
+
+				if (_element is FrameworkElement fe)
+				{
+					fe.OnLayoutUpdated();
+				}
 			}
 		}
 
@@ -303,6 +308,11 @@ namespace Windows.UI.Xaml.Controls
 		/// <param name="frame">The rectangle to use, in Logical position</param>
 		public void ArrangeChild(View view, Rect frame)
 		{
+			ArrangeChild(view, frame, true);
+		}
+
+		internal void ArrangeChild(View view, Rect frame, bool raiseLayoutUpdated)
+		{
 			if ((view as IFrameworkElement)?.Visibility == Visibility.Collapsed)
 			{
 				return;
@@ -310,6 +320,11 @@ namespace Windows.UI.Xaml.Controls
 			frame = ApplyMarginAndAlignments(view, frame);
 
 			ArrangeChildOverride(view, frame);
+
+			if (raiseLayoutUpdated && view is FrameworkElement fe)
+			{
+				fe?.OnLayoutUpdated();
+			}
 		}
 
 		private void LogArrange(View view, Rect frame)
@@ -341,7 +356,7 @@ namespace Windows.UI.Xaml.Controls
 		private Rect ApplyMarginAndAlignments(View view, Rect frame)
 		{
 			// In this implementation, since we do not have the ability to intercept proprely the measure and arrange
-			// because of the type of hierarchy (inherting from native views), we must apply the margins and alignements
+			// because of the type of hierarchy (inheriting from native views), we must apply the margins and alignements
 			// from within the panel to its children. This makes the authoring of custom panels that do not inherit from 
 			// Panel that do not use this helper a bit more complex, but for all other panels that use this
 			// layouter, the logic is implied.

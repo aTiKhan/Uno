@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using Uno.Disposables;
 using Windows.UI.Core;
@@ -49,14 +50,24 @@ namespace Uno.UI.Samples.UITests.Helpers
 			}
 		}
 
-		protected static Command CreateCommand<T>(Action<T> action)
+		private readonly Dictionary<string, Command> _commands = new Dictionary<string,Command>();
+
+		protected Command GetOrCreateCommand<T>(Action<T> action, [CallerMemberName] string commandName = null)
 		{
-			return new Command(x => action((T)x));
+			if(!_commands.TryGetValue(commandName, out var command))
+			{
+				_commands[commandName] = command = new Command(x => action((T)x));
+			}
+			return command;
 		}
 
-		protected static Command CreateCommand(Action action)
+		protected Command GetOrCreateCommand(Action action, [CallerMemberName] string commandName = null)
 		{
-			return new Command(_ => action());
+			if (!_commands.TryGetValue(commandName, out var command))
+			{
+				_commands[commandName] = command = new Command(_ => action());
+			}
+			return command;
 		}
 
 		public void Dispose()
@@ -89,6 +100,8 @@ namespace Uno.UI.Samples.UITests.Helpers
 		public class Command : ICommand
 		{
 			private readonly Action<object> _action;
+			private readonly Func<object, Task> _actionTask;
+			private readonly Func<object, bool> _canExecute;
 			private bool _manualCanExecute = true;
 
 			public bool ManualCanExecute
@@ -101,34 +114,56 @@ namespace Uno.UI.Samples.UITests.Helpers
 				}
 			}
 
-			private bool _isExecuting = false;
+			private object _isExecuting = null;
+			private static object _isExecutingNull = new object(); // this represent a null parameter when something is executing
 
-			public Command(Action<object> action)
+			public Command(Action<object> action, Func<object, bool> canExecute = null)
 			{
-				_action = action;
+				_action = action ?? throw new ArgumentNullException(nameof(action));
+				_canExecute = canExecute;
+			}
+
+			public Command(Func<object, Task> actionTask, Func<object, bool> canExecute = null)
+			{
+				_actionTask = actionTask ?? throw new ArgumentNullException(nameof(actionTask));
+				_canExecute = canExecute;
 			}
 
 			public bool CanExecute(object parameter)
 			{
-				return !_isExecuting && _manualCanExecute;
+				var canExecuteParameter = parameter ?? _isExecutingNull;
+
+				return (_isExecuting != canExecuteParameter)
+					&& (_canExecute?.Invoke(parameter) ?? true)
+					&& _manualCanExecute;
 			}
 
-			public void Execute(object parameter)
+			public async void Execute(object parameter)
 			{
-				if (_isExecuting)
+				var isExecutingParameter = parameter ?? _isExecutingNull;
+
+				if (_isExecuting == isExecutingParameter)
 				{
+					// This parameter is executing
 					return;
 				}
 
 				try
 				{
-					_isExecuting = true;
+					_isExecuting = isExecutingParameter;
 					CanExecuteChanged?.Invoke(this, EventArgs.Empty);
-					_action(parameter);
+					if (_action != null)
+					{
+						_action(parameter);
+					}
+					else
+					{
+						await _actionTask(parameter);
+					}
 				}
 				finally
 				{
-					_isExecuting = false;
+					_isExecuting = null;
 					CanExecuteChanged?.Invoke(this, EventArgs.Empty);
 				}
 			}

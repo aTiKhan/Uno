@@ -3,13 +3,16 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
+using CoreGraphics;
+using UIKit;
+using Uno.UI;
 using Uno.UI.Common;
+using Windows.UI.Xaml.Controls.Primitives;
 using Windows.UI.Xaml.Data;
 
 namespace Windows.UI.Xaml.Controls
 {
-	//TODO: should inherit from PickerFlyoutBase (Task 17592)
-	public partial class DatePickerFlyout : Flyout
+	public partial class DatePickerFlyout : PickerFlyoutBase
 	{
 		private bool _isInitialized;
 
@@ -19,11 +22,22 @@ namespace Windows.UI.Xaml.Controls
 			Closed += DatePickerFlyout_Closed;
 		}
 
+		protected override void InitializePopupPanel()
+		{
+			_popup.PopupPanel = new PickerFlyoutPopupPanel(this)
+			{
+				Visibility = Visibility.Collapsed,
+				Background = SolidColorBrushHelper.Transparent,
+				AutoresizingMask = UIViewAutoresizing.All,
+				Frame = new CGRect(CGPoint.Empty, ViewHelper.GetScreenSize())
+			};
+		}
+
 		/// <summary>
 		/// This method sets the Content property of the Flyout.
 		/// </summary>
 		/// <remarks>
-		/// Note that for performance reasons, we don't call it in the contructor. Instead, we wait for the popup to be opening.
+		/// Note that for performance reasons, we don't call it in the constructor. Instead, we wait for the popup to be opening.
 		/// The native UIDatePicker contained in the DatePickerSelector is known for being slow in general (https://bugzilla.xamarin.com/show_bug.cgi?id=49469).
 		/// Using this strategy means that a page containing a DatePicker will no longer be slowed down by this initialization during the page creation.
 		/// Instead, you'll see the delay when opening the DatePickerFlyout for the first time.
@@ -38,7 +52,12 @@ namespace Windows.UI.Xaml.Controls
 
 			_isInitialized = true;
 
-			Content = new DatePickerSelector();
+			Content = new DatePickerSelector()
+			{
+				MinYear = MinYear,
+				MaxYear = MaxYear
+			};
+
 			BindToContent("MinYear");
 			BindToContent("MaxYear");
 
@@ -46,6 +65,37 @@ namespace Windows.UI.Xaml.Controls
 
 			AttachAcceptCommand((DatePickerSelector)Content);
 		}
+
+		#region Content DependencyProperty
+		internal IUIElement Content
+		{
+			get { return (IUIElement)this.GetValue(ContentProperty); }
+			set { this.SetValue(ContentProperty, value); }
+		}
+
+		internal static readonly DependencyProperty ContentProperty =
+			DependencyProperty.Register(
+				"Content",
+				typeof(IUIElement),
+				typeof(DatePickerFlyout),
+				new FrameworkPropertyMetadata(default(IUIElement), FrameworkPropertyMetadataOptions.AffectsMeasure, OnContentChanged));
+		private DatePickerFlyoutPresenter _datePickerPresenter;
+
+		private static void OnContentChanged(object dependencyObject, DependencyPropertyChangedEventArgs args)
+		{
+			var flyout = dependencyObject as DatePickerFlyout;
+
+			if (flyout._datePickerPresenter != null)
+			{
+				if (args.NewValue is IDependencyObjectStoreProvider binder)
+				{
+					binder.Store.SetValue(binder.Store.TemplatedParentProperty, flyout.TemplatedParent, DependencyPropertyValuePrecedences.Local);
+				}
+
+				flyout._datePickerPresenter.Content = args.NewValue;
+			}
+		}
+		#endregion
 
 		private void DatePickerFlyout_Opening(object sender, EventArgs e)
 		{
@@ -82,15 +132,14 @@ namespace Windows.UI.Xaml.Controls
 
 		protected override Control CreatePresenter()
 		{
-			var presenter = new DatePickerFlyoutPresenter()
+			_datePickerPresenter = new DatePickerFlyoutPresenter()
 			{
-				Style = FlyoutPresenterStyle,
 				Content = Content
 			};
 
-			AttachAcceptCommand(presenter);
+			AttachAcceptCommand(_datePickerPresenter);
 
-			return presenter;
+			return _datePickerPresenter;
 		}
 
 		private void AttachAcceptCommand(IFrameworkElement rootControl)

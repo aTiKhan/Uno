@@ -8,12 +8,17 @@ import android.util.Log;
 
 import java.lang.*;
 import java.lang.reflect.*;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.HashMap;
 
 public abstract class UnoViewGroup
 	extends android.view.ViewGroup
 	implements UnoViewParent{
+
+	private static final String LOGTAG = "UnoViewGroup";
+	private static boolean _isLayoutingFromMeasure = false;
+	private static ArrayList<UnoViewGroup> callToRequestLayout = new ArrayList<UnoViewGroup>();
 
 	private boolean _inLocalAddView, _inLocalRemoveView;
 	private boolean _isEnabled;
@@ -27,7 +32,6 @@ public abstract class UnoViewGroup
 	private boolean _isManagedLoaded;
 	private boolean _needsLayoutOnAttachedToWindow;
 
-	private boolean _isPointerCaptured;
 	private boolean _isPointInView;
 
 	private boolean _shouldBlockRequestFocus;
@@ -45,7 +49,7 @@ public abstract class UnoViewGroup
 			buildSetFrameReflection();
 		}
 		catch(Exception e) {
-			Log.e("UnoViewGroup", "Failed to initialize NativeSetFrame method. " + e.toString());
+			Log.e(LOGTAG, "Failed to initialize NativeSetFrame method. " + e.toString());
 		}
 	}
 
@@ -66,10 +70,10 @@ public abstract class UnoViewGroup
 		// This block is commented for easier logging.
 		//
 		// if(_setFrameMethod != null) {
-		// 	Log.i("UnoViewGroup", "Found android.view.View.setFrame(), arrange fast-path is ENABLED.");
+		// 	Log.i(LOGTAG, "Found android.view.View.setFrame(), arrange fast-path is ENABLED.");
 		// }
 		// else {
-		// 	Log.i("UnoViewGroup", "Unable to find android.view.View.setFrame(), arrange fast-path is DISABLED.");
+		// 	Log.i(LOGTAG, "Unable to find android.view.View.setFrame(), arrange fast-path is DISABLED.");
 		// }
 	}
 
@@ -103,6 +107,13 @@ public abstract class UnoViewGroup
 				}
 			}
 		);
+
+		setClipChildren(false); // This is required for animations not to be cut off by transformed ancestor views. (#1333)
+	}
+
+	public final void enableAndroidClipping()
+	{
+		setClipChildren(true); // called by controls requiring it (ScrollViewer)
 	}
 
 	private boolean _unoLayoutOverride;
@@ -281,6 +292,12 @@ public abstract class UnoViewGroup
 				// is called again once the view is fully natively initialized.
 				_needsLayoutOnAttachedToWindow = true;
 			}
+
+			if(_isLayoutingFromMeasure){
+				callToRequestLayout.add(this);
+				return;
+			}
+
 			super.requestLayout();
 		}
 	}
@@ -313,7 +330,7 @@ public abstract class UnoViewGroup
 	public boolean dispatchTouchEvent(MotionEvent e)
 	{
 		String originalIndent = _indent;
-		Log.i("", _indent + "    + " + this.toString());
+		Log.i(LOGTAG, _indent + "    + " + this.toString());
 		_indent += "    | ";
 
 		boolean dispatched = dispatchTouchEventCore(e);
@@ -364,10 +381,11 @@ public abstract class UnoViewGroup
 
 		if (!_isHitTestVisible || !_isEnabled)
 		{
-			// Log.i(this.toString(), "!_isHitTestVisible: " + !_isHitTestVisible);
-			// Log.i(this.toString(), "!_isEnabled: " + !_isEnabled);
+			// Log.i(LOGTAG, _indent + "!_isHitTestVisible: " + !_isHitTestVisible);
+			// Log.i(LOGTAG, _indent + "!_isEnabled: " + !_isEnabled);
+
 			// ignore all touches
-			setIsPointerCaptured(false);
+			clearCaptures();
 			return false;
 		}
 
@@ -383,8 +401,8 @@ public abstract class UnoViewGroup
 		// even if the point is outside the view bounds.
 		_isPointInView = isLocalTouchPointInView(_transformedTouchX, _transformedTouchY); // takes clipping into account
 
-		//Log.i("", _indent + "MotionEvent: " + e.toString());
-		//Log.i("", _indent + "_isPointInView: " + _isPointInView);
+		//Log.i(LOGTAG, _indent + "MotionEvent: " + e.toString());
+		//Log.i(LOGTAG, _indent + "_isPointInView: " + _isPointInView);
 
 		// Note: Always dispatch the touch events, otherwise system controls may not behave
 		//		 properly, such as not displaying "material design" animation cues
@@ -410,8 +428,8 @@ public abstract class UnoViewGroup
 			// Doing this we bypass a lot of logic done by the super ViewGroup, (https://android.googlesource.com/platform/frameworks/base/+/0e71b4f19ba602c8c646744e690ab01c69808b42/core/java/android/view/ViewGroup.java#2557)
 			// especially optimization of the TouchTarget resolving / tracking. (https://android.googlesource.com/platform/frameworks/base/+/0e71b4f19ba602c8c646744e690ab01c69808b42/core/java/android/view/ViewGroup.java#2654)
 			// We assume that events that are wronlgy dispatched to children are going to be filteerd by children themselves
-			// and thios support is sufficent enough for our current cases.
-			// Note: this is not fully complient with the UWP contract (cf. https://github.com/nventive/Uno/issues/649)
+			// and thios support is sufficient enough for our current cases.
+			// Note: this is not fully compliant with the UWP contract (cf. https://github.com/nventive/Uno/issues/649)
 
 			// Note: If this logic is called once, it has to be called for all MotionEvents in the same touch cycle, including Cancel, because if
 			// ViewGroup.dispatchTouchEvent() isn't called for Down then all subsequent events won't be handled correctly
@@ -421,12 +439,17 @@ public abstract class UnoViewGroup
 			for (int i = getChildCount() - 1; i >= 0; i--) { // Inverse enumeration in order to prioritize controls that are on top
 				View child = getChildAt(i);
 
+				if (child.getVisibility() != View.VISIBLE)
+				{
+					continue;
+				}
+
 				final Matrix transform = _childrenTransformations.get(child);
 				final float offsetX = getScrollX() - child.getLeft();
 				final float offsetY = getScrollY() - child.getTop();
 
 				if (transform == null || transform.isIdentity()) {
-					// No meaningfull transformation on this child, instead of cloning the MetionEvent,
+					// No meaningful transformation on this child, instead of cloning the MotionEvent,
 					// we only offset the current one, propagate it to the child and then offset it back to its original values.
 
 					e.offsetLocation(offsetX, offsetY);
@@ -435,7 +458,7 @@ public abstract class UnoViewGroup
 
 					e.offsetLocation(-offsetX, -offsetY);
 				} else {
-					// We have a valid static trasnform on this child, we have to transform the MotionEvent
+					// We have a valid static transform on this child, we have to transform the MotionEvent
 					// into the child coordinates.
 
 					final MotionEvent transformedEvent = MotionEvent.obtain(e);
@@ -464,7 +487,7 @@ public abstract class UnoViewGroup
 
 		if (!_childIsUnoViewGroup) // child is native
 		{
-			// Log.i(this.toString(), "!_childIsUnoViewGroup: " + !_childIsUnoViewGroup);
+			// Log.i(LOGTAG, _indent + "!_childIsUnoViewGroup: " + !_childIsUnoViewGroup);
 			_childBlockedTouchEvent = _childHandledTouchEvent = superDispatchTouchEvent;
 		}
 
@@ -481,24 +504,24 @@ public abstract class UnoViewGroup
 		boolean isHandlingTouchEvent = _childHandledTouchEvent ||
 			((isBlockingTouchEvent || didPointerExit) && tryHandleTouchEvent(e, _isPointInView, wasPointInView, isCurrentPointer));
 
-		//Log.i("", _indent + "superDispatchTouchEvent: " + superDispatchTouchEvent);
-		//Log.i("", _indent + "_childBlockedTouchEvent: " + _childBlockedTouchEvent);
-		//Log.i("", _indent + "_childHandledTouchEvent: " + _childHandledTouchEvent);
-		//Log.i("", _indent + "isBlockingTouchEvent: " + isBlockingTouchEvent);
-		//Log.i("", _indent + "isHandlingTouchEvent: " + isHandlingTouchEvent);
+		//Log.i(LOGTAG, _indent + "superDispatchTouchEvent: " + superDispatchTouchEvent);
+		//Log.i(LOGTAG, _indent + "_childBlockedTouchEvent: " + _childBlockedTouchEvent);
+		//Log.i(LOGTAG, _indent + "_childHandledTouchEvent: " + _childHandledTouchEvent);
+		//Log.i(LOGTAG, _indent + "isBlockingTouchEvent: " + isBlockingTouchEvent);
+		//Log.i(LOGTAG, _indent + "isHandlingTouchEvent: " + isHandlingTouchEvent);
 
 		UnoViewParent parentUnoViewGroup = getParentUnoViewGroup();
 		boolean parentIsUnoViewGroup = parentUnoViewGroup != null;
-		// Log.i("", _indent + "parentIsUnoViewGroup: " + parentIsUnoViewGroup);
+		// Log.i(LOGTAG, _indent + "parentIsUnoViewGroup: " + parentIsUnoViewGroup);
 
 		if (parentIsUnoViewGroup)
 		{
 			parentUnoViewGroup.setChildIsUnoViewGroup(true);
 		}
 
-		if (!_isPointInView && !_isPointerCaptured)
+		if (!_isPointInView && !getIsPointerCaptured())
 		{
-			// Log.i("", _indent + "!isPointInView: " + !isPointInView);
+			// Log.i(LOGTAG, _indent + "!_isPointInView: " + !_isPointInView);
 			return false;
 		}
 
@@ -534,7 +557,7 @@ public abstract class UnoViewGroup
 
 		switch (action) {
 			case MotionEvent.ACTION_CANCEL: {
-				// Unset currrent pointer
+				// Unset current pointer
 				_currentPointerId = -1;
 				return true;
 			}
@@ -565,22 +588,59 @@ public abstract class UnoViewGroup
 
 	private boolean tryHandleTouchEvent(MotionEvent e, boolean isPointInView, boolean wasPointInView, boolean isCurrentPointer)
 	{
-		return _gestureDetector != null && _gestureDetector.onTouchEvent(e, isPointInView, wasPointInView, _isPointerCaptured, isCurrentPointer);
+		return _gestureDetector != null && _gestureDetector.onTouchEvent(e, isPointInView, wasPointInView, getIsPointerCaptured(), isCurrentPointer);
 	}
 
 	private void tryClearCapture(MotionEvent e) {
 		int action = e.getAction();
 		if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP || action == MotionEvent.ACTION_CANCEL) {
-			setIsPointerCaptured(false);
+			clearCaptures();
 		}
 	}
 
-	public final boolean getIsPointerCaptured() {
-		return _isPointerCaptured;
+	protected void clearCaptures(){
 	}
 
-	public final void setIsPointerCaptured(boolean value) {
-		_isPointerCaptured = value;
+	/**
+	 * Call this method if a view is to be laid out outside of a framework layout pass, to ensure that requestLayout() requests are captured
+	 * and propagated later. (Equivalent of ViewRootImpl.requestLayoutDuringLayout())
+	 */
+	public static void startLayoutingFromMeasure() {
+		_isLayoutingFromMeasure = true;
+	}
+
+	/**
+	 * This should always be called immediately after {{@link #startLayoutingFromMeasure()}} has been called.
+	 */
+	public static void endLayoutingFromMeasure() {
+			_isLayoutingFromMeasure = false;
+	}
+
+	/**
+	 * This should be called subsequently to {{@link #endLayoutingFromMeasure()}}, typically during a true layout pass, to flush any captured layout requests.
+	 */
+	public static void measureBeforeLayout() {
+		if (_isLayoutingFromMeasure)
+		{
+			// This can happen when nested controls call startLayoutingFromMeasure()/measureBeforeLayout()
+			return;
+		}
+
+		try {
+			for (int i = 0; i < callToRequestLayout.size(); i++) {
+				UnoViewGroup view = callToRequestLayout.get(i);
+				if (view.isAttachedToWindow()) {
+					view.requestLayout();
+				}
+			}
+		}
+		finally {
+			callToRequestLayout.clear();
+		}
+	}
+
+	protected boolean getIsPointerCaptured() {
+		return false;
 	}
 
 	private UnoViewParent getParentUnoViewGroup()
@@ -801,7 +861,7 @@ public abstract class UnoViewGroup
 		Matrix inverse = new Matrix();
 		if (viewParent instanceof UnoViewGroup) {
 			Matrix parentMatrix = ((UnoViewGroup) viewParent).getChildStaticMatrix(view);
-			if (!parentMatrix.isIdentity()) {
+			if (parentMatrix != null && !parentMatrix.isIdentity()) {
 				parentMatrix.invert(inverse);
 				inverse.mapPoints(point);
 			}
@@ -816,12 +876,7 @@ public abstract class UnoViewGroup
 	}
 
 	private Matrix getChildStaticMatrix(View view) {
-		Matrix transform = _childrenTransformations.get(view);
-		if (transform == null) {
-			transform = new Matrix();
-		}
-
-		return transform;
+		return _childrenTransformations.get(view);
 	}
 
 	/**
@@ -891,14 +946,19 @@ public abstract class UnoViewGroup
 			return point;
 		}
 
-		// Non-UIElement view, walk the tree up to the next UIElement
-		// (and adjust coordinate for each layer to include its location, i.e. Top, Left, etc.)
-		final ViewParent parent = view.getParent();
-		if (parent instanceof View) {
-			// Not at root, walk upward
-			float[] coords = getTransformedTouchCoordinate(parent, e);
-			calculateTransformedPoint((View) view, coords);
-			return coords;
+		if(view != null) {
+			// The parent view may be null if the touched item is being removed
+			// from the tree while being touched.
+
+			// Non-UIElement view, walk the tree up to the next UIElement
+			// (and adjust coordinate for each layer to include its location, i.e. Top, Left, etc.)
+			final ViewParent parent = view.getParent();
+			if (parent instanceof View) {
+				// Not at root, walk upward
+				float[] coords = getTransformedTouchCoordinate(parent, e);
+				calculateTransformedPoint((View) view, coords);
+				return coords;
+			}
 		}
 
 		// We reached the top of the tree
@@ -913,6 +973,40 @@ public abstract class UnoViewGroup
 			point[1] -= screenLocation[1];
 		}
 		return point;
+	}
+
+	@Override
+	public void getLocationInWindow(int[] outLocation) {
+		super.getLocationInWindow(outLocation);
+		ViewParent currentParent = getParent();
+		View currentChild = this;
+
+		float[] points = null;
+		while (currentParent instanceof View) {
+			if (currentParent instanceof UnoViewGroup) {
+				final UnoViewGroup currentUVGParent = (UnoViewGroup)currentParent;
+				Matrix parentMatrix =currentUVGParent.getChildStaticMatrix(currentChild);
+				if (parentMatrix != null && !parentMatrix.isIdentity()) {
+					if (points == null) {
+						points = new float[2];
+					}
+
+					// Apply the offset from the ancestor's RenderTransform, because the base Android method doesn't take
+					// StaticTransformation into account.
+					Matrix inverse = new Matrix();
+					parentMatrix.invert(inverse);
+					inverse.mapPoints(points);
+				}
+			}
+
+			currentChild = (View)currentParent;
+			currentParent = currentParent.getParent();
+		}
+
+		if (points != null) {
+			outLocation[0]-=(int)points[0];
+			outLocation[1]-=(int)points[1];
+		}
 	}
 
 	// Allows UI automation operations to look for a single 'Text' property for both ViewGroup and TextView elements.

@@ -10,8 +10,6 @@ namespace Windows.UI.Xaml.Controls
 	{
 		private readonly SerialDisposable _closePopup = new SerialDisposable();
 
-		internal UIElement Anchor { get; set; }
-
 		public Popup()
 		{
 			PopupPanel = new PopupPanel(this);
@@ -23,6 +21,13 @@ namespace Windows.UI.Xaml.Controls
 
 			PopupPanel.Children.Remove(oldChild);
 			PopupPanel.Children.Add(newChild);
+		}
+
+		protected override void OnIsLightDismissEnabledChanged(bool oldIsLightDismissEnabled, bool newIsLightDismissEnabled)
+		{
+			base.OnIsLightDismissEnabledChanged(oldIsLightDismissEnabled, newIsLightDismissEnabled);
+
+			(PopupPanel.Parent as PopupRoot)?.UpdateLightDismissArea();
 		}
 
 		protected override void OnIsOpenChanged(bool oldIsOpen, bool newIsOpen)
@@ -63,21 +68,34 @@ namespace Windows.UI.Xaml.Controls
 
 			if (previousPanel != null)
 			{
-				previousPanel.PointerPressed -= Panel_PointerPressed;
+				previousPanel.PointerPressed -= OnPanelPointerPressed;
+				previousPanel.PointerReleased -= OnPanelPointerReleased;
 			}
 			if (newPanel != null)
 			{
-				newPanel.PointerPressed += Panel_PointerPressed;
+				newPanel.PointerPressed += OnPanelPointerPressed;
+				newPanel.PointerReleased += OnPanelPointerReleased;
 			}
 		}
 
-		private void Panel_PointerPressed(object sender, Input.PointerRoutedEventArgs e)
+		private bool _pressed;
+
+		private void OnPanelPointerPressed(object sender, Input.PointerRoutedEventArgs args)
 		{
-			if (IsLightDismissEnabled)
+			// Both pressed & released must reach
+			// the popup to close it.
+			// (and, obviously, the popup must be light dismiss!)
+			_pressed = IsLightDismissEnabled;
+		}
+
+		private void OnPanelPointerReleased(object sender, Input.PointerRoutedEventArgs args)
+		{
+			if (_pressed && IsLightDismissEnabled)
 			{
+				// Received the completed sequence
+				// pressed + released: we can close.
 				IsOpen = false;
 			}
 		}
-
 	}
 }

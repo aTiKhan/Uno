@@ -30,19 +30,17 @@ namespace Windows.UI.Xaml
 				Style.RegisterDefaultStyleForType(typeof(Controls.PasswordBox), Uno.UI.GlobalStaticResources.XamlDefaultPasswordBox);
 				Style.RegisterDefaultStyleForType(typeof(Controls.CheckBox), Uno.UI.GlobalStaticResources.XamlDefaultCheckBox);
 				Style.RegisterDefaultStyleForType(typeof(Controls.RadioButton), Uno.UI.GlobalStaticResources.XamlDefaultRadioButton);
-				Style.RegisterDefaultStyleForType(typeof(Controls.AppBarSeparator), Uno.UI.GlobalStaticResources.XamlAppBarSeparator);
-				Style.RegisterDefaultStyleForType(typeof(Controls.AppBarButton), Uno.UI.GlobalStaticResources.XamlAppBarButton);
-				Style.RegisterDefaultStyleForType(typeof(Controls.AppBarToggleButton), Uno.UI.GlobalStaticResources.XamlAppBarToggleButton);
+				Style.RegisterDefaultStyleForType(typeof(Controls.AppBarSeparator), Uno.UI.GlobalStaticResources.XamlDefaultAppBarSeparator);
+				Style.RegisterDefaultStyleForType(typeof(Controls.AppBarButton), Uno.UI.GlobalStaticResources.XamlDefaultAppBarButton);
+				Style.RegisterDefaultStyleForType(typeof(Controls.AppBarToggleButton), Uno.UI.GlobalStaticResources.XamlDefaultAppBarToggleButton);
 				Style.RegisterDefaultStyleForType(typeof(Controls.Frame), Uno.UI.GlobalStaticResources.XamlDefaultFrame);
 				Style.RegisterDefaultStyleForType(typeof(Controls.ProgressBar), Uno.UI.GlobalStaticResources.XamlDefaultProgressBar);
 				Style.RegisterDefaultStyleForType(typeof(Controls.Slider), Uno.UI.GlobalStaticResources.XamlDefaultSlider);
 				Style.RegisterDefaultStyleForType(typeof(Controls.Primitives.ToggleButton), Uno.UI.GlobalStaticResources.XamlDefaultToggleButton);
 				Style.RegisterDefaultStyleForType(typeof(Controls.ToggleSwitch), Uno.UI.GlobalStaticResources.XamlDefaultToggleSwitch);
 				Style.RegisterDefaultStyleForType(typeof(Controls.Pivot), Uno.UI.GlobalStaticResources.XamlDefaultPivot);
-
-#if !__WASM__
-				Style.RegisterDefaultStyleForType(typeof(Controls.AppBar), Uno.UI.GlobalStaticResources.XamlCommandBar);
-#endif
+				Style.RegisterDefaultStyleForType(typeof(Controls.MenuBar), Uno.UI.GlobalStaticResources.XamlDefaultMenuBar);
+				Style.RegisterDefaultStyleForType(typeof(Controls.AppBar), Uno.UI.GlobalStaticResources.XamlDefaultCommandBar);
 #endif
 			}
 		}

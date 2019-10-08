@@ -28,6 +28,14 @@ namespace Windows.UI.Xaml
 			return child;
 		}
 
+		public View AddChild(View child, int index)
+		{
+			_children.Insert(index, child);
+			child.SetParent(this);
+
+			return child;
+		}
+
 		public View RemoveChild(View child)
 		{
 			_children.Remove(child);
@@ -39,6 +47,11 @@ namespace Windows.UI.Xaml
 		public View FindFirstChild()
 		{
 			return _children.FirstOrDefault();
+		}
+
+		public T FindFirstChild<T>()  where T : View
+		{
+			return _children.OfType<T>().FirstOrDefault<T>();
 		}
 
 		public virtual IEnumerable<View> GetChildren()
@@ -92,5 +105,9 @@ namespace Windows.UI.Xaml
 
 		internal void ResumeRendering() => throw new NotSupportedException();
 		public IEnumerator GetEnumerator() => _children.GetEnumerator();
+
+		public double ActualWidth => Arranged.Width;
+
+		public double ActualHeight => Arranged.Height;
 	}
 }

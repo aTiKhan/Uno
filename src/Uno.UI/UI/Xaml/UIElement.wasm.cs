@@ -16,8 +16,10 @@ using Windows.Foundation;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.System;
+using Uno.Collections;
 using Uno.UI;
 using System.Numerics;
+using Uno.UI.Xaml;
 
 namespace Windows.UI.Xaml
 {
@@ -158,6 +160,17 @@ namespace Windows.UI.Xaml
 			Uno.UI.Xaml.WindowManagerInterop.SetStyles(HtmlId, styles);
 		}
 
+		/// <summary>
+		/// Set a specified CSS class to an element from a set of possible values.
+		/// All other possible values will be removed from the element.
+		/// </summary>
+		/// <param name="cssClasses">All possible class values</param>
+		/// <param name="index">The index of the value to set (-1: unset)</param>
+		protected internal void SetClasses(string[] cssClasses, int index = -1)
+		{
+			Uno.UI.Xaml.WindowManagerInterop.SetClasses(HtmlId, cssClasses, index);
+		}
+
 #if DEBUG
 		private long _arrangeCount = 0;
 #endif
@@ -191,7 +204,7 @@ namespace Windows.UI.Xaml
 
 		protected internal void SetAttribute(string name, string value)
 		{
-			Uno.UI.Xaml.WindowManagerInterop.SetAttribute(HtmlId, new[] { (name, value) });
+			Uno.UI.Xaml.WindowManagerInterop.SetAttribute(HtmlId, name, value);
 		}
 
 		protected internal void SetAttribute(params (string name, string value)[] attributes)
@@ -201,7 +214,7 @@ namespace Windows.UI.Xaml
 				return; // nothing to do
 			}
 
-			Uno.UI.Xaml.WindowManagerInterop.SetAttribute(HtmlId, attributes);
+			Uno.UI.Xaml.WindowManagerInterop.SetAttributes(HtmlId, attributes);
 		}
 
 		protected internal string GetAttribute(string name)
@@ -242,12 +255,15 @@ namespace Windows.UI.Xaml
 				return;
 			}
 
+			var width = double.IsInfinity(rect.Width) ? 100000.0f : rect.Width;
+			var height = double.IsInfinity(rect.Height) ? 100000.0f : rect.Height;
+
 			SetStyle(
 				"clip",
 				"rect("
 				+ Math.Floor(rect.Y) + "px,"
-				+ Math.Ceiling(rect.X + rect.Width) + "px,"
-				+ Math.Ceiling(rect.Y + rect.Height) + "px,"
+				+ Math.Ceiling(rect.X + width) + "px,"
+				+ Math.Ceiling(rect.Y + height) + "px,"
 				+ Math.Floor(rect.X) + "px"
 				+ ")"
 			);
@@ -276,6 +292,7 @@ namespace Windows.UI.Xaml
 
 			private readonly UIElement _owner;
 			private readonly string _eventName;
+			private RoutedEvent _routedEvent;
 			private readonly bool _canBubbleNatively;
 			private readonly Func<string, EventArgs> _payloadConverter;
 			private readonly Func<EventArgs, bool> _eventFilterManaged;
@@ -289,6 +306,7 @@ namespace Windows.UI.Xaml
 			public EventRegistration(
 				UIElement owner,
 				string eventName,
+				RoutedEvent routedEvent,
 				bool onCapturePhase = false,
 				bool canBubbleNatively = false,
 				HtmlEventFilter? eventFilter = null,
@@ -298,6 +316,7 @@ namespace Windows.UI.Xaml
 			{
 				_owner = owner;
 				_eventName = eventName;
+				_routedEvent = routedEvent;
 				_canBubbleNatively = canBubbleNatively;
 				_payloadConverter = payloadConverter;
 				_eventFilterManaged = eventFilterManaged ?? _emptyFilter;
@@ -373,6 +392,11 @@ namespace Windows.UI.Xaml
 					if (args is RoutedEventArgs routedArgs)
 					{
 						routedArgs.CanBubbleNatively = _canBubbleNatively;
+
+						if (_routedEvent?.Flag == RoutedEventFlag.Tapped)
+						{
+							_owner.PreRaiseTapped?.Invoke(_owner, null);
+						}
 					}
 
 					if (_eventFilterManaged(args))
@@ -418,18 +442,19 @@ namespace Windows.UI.Xaml
 		internal void RegisterEventHandler(
 			string eventName,
 			Delegate handler,
+			RoutedEvent routedEvent = null,
 			bool onCapturePhase = false,
 			bool canBubbleNatively = false,
 			HtmlEventFilter? eventFilter = null,
 			HtmlEventExtractor? eventExtractor = null,
-			Func<string, EventArgs> payloadConverter = null,
-			Func<EventArgs, bool> eventFilterManaged = null)
+			Func<string, EventArgs> payloadConverter = null)
 		{
 			if (!_eventHandlers.TryGetValue(eventName, out var registration))
 			{
 				_eventHandlers[eventName] = registration = new EventRegistration(
 					this,
 					eventName,
+					routedEvent,
 					onCapturePhase,
 					canBubbleNatively,
 					eventFilter,
@@ -491,7 +516,7 @@ namespace Windows.UI.Xaml
 			return false;
 		}
 
-		private static UIElement GetElementFromHandle(int handle)
+		internal static UIElement GetElementFromHandle(int handle)
 		{
 			var gcHandle = GCHandle.FromIntPtr((IntPtr)handle);
 
@@ -505,7 +530,7 @@ namespace Windows.UI.Xaml
 
 		private Rect _arranged;
 		private string _name;
-		internal List<UIElement> _children = new List<UIElement>();
+		internal IList<UIElement> _children = new MaterializableList<UIElement>();
 
 		public string Name
 		{
@@ -518,6 +543,14 @@ namespace Windows.UI.Xaml
 				{
 					Uno.UI.Xaml.WindowManagerInterop.SetName(HtmlId, _name);
 				}
+			}
+		}
+
+		partial void OnUidChangedPartial()
+		{
+			if (FeatureConfiguration.UIElement.AssignDOMXamlName)
+			{
+				Uno.UI.Xaml.WindowManagerInterop.SetXUid(HtmlId, _uid);
 			}
 		}
 
@@ -544,9 +577,7 @@ namespace Windows.UI.Xaml
 		public Func<Size, Size> DesiredSizeSelector { get; set; }
 
 		internal Windows.Foundation.Point GetPosition(Point position, global::Windows.UI.Xaml.UIElement relativeTo)
-		{
-			throw new NotSupportedException();
-		}
+			=> TransformToVisual(relativeTo).TransformPoint(position);
 
 		protected virtual void OnVisibilityChanged(Visibility oldValue, Visibility newVisibility)
 		{
@@ -899,6 +930,7 @@ namespace Windows.UI.Xaml
 
 					RegisterEventHandler(
 						eventDescription.domEventName,
+						routedEvent: routedEvent,
 						handler: new RoutedEventHandlerWithHandled(RoutedEventHandler),
 						onCapturePhase: false,
 						canBubbleNatively: true,

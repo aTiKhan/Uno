@@ -46,6 +46,12 @@ namespace Windows.UI.Xaml.Controls.Primitives
 			InitializeProperties();
 		}
 
+		public new bool IsPointerOver
+		{
+			get => base.IsPointerOver;
+			set => base.IsPointerOver = value;
+		}
+
 		private void InitializeProperties()
 		{
 			OnIsEnabledChanged(false, IsEnabled);
@@ -54,7 +60,7 @@ namespace Windows.UI.Xaml.Controls.Primitives
 
 		partial void PartialInitializeProperties();
 
-#region Command (DP)
+		#region Command (DP)
 		public static readonly DependencyProperty CommandProperty = DependencyProperty.Register(
 			"Command", typeof(ICommand), typeof(ButtonBase), new PropertyMetadata(default(ICommand), OnCommandChanged));
 
@@ -68,7 +74,7 @@ namespace Windows.UI.Xaml.Controls.Primitives
 		{
 			((ButtonBase)dependencyobject).OnCommandChanged(args.NewValue as ICommand);
 		}
-#endregion
+		#endregion
 
 		partial void RegisterEvents();
 
@@ -138,10 +144,10 @@ namespace Windows.UI.Xaml.Controls.Primitives
 
 			RegisterEvents();
 		}
-		
+
 		private void OnClick(PointerRoutedEventArgs args = null)
 		{
-			Click?.Invoke(this, new RoutedEventArgs());
+			Click?.Invoke(this, RoutedEventArgs.Empty);
 
 			try
 			{
@@ -177,11 +183,6 @@ namespace Windows.UI.Xaml.Controls.Primitives
 		{
 			base.OnPointerReleased(args);
 
-			if (IsPointerOver)
-			{
-				OnClick(args); // TODO: Consider ClickMode and mouse pointer button
-			}
-
 			IsPointerOver = false;
 			IsPointerPressed = false;
 		}
@@ -213,7 +214,7 @@ namespace Windows.UI.Xaml.Controls.Primitives
 			IsPointerOver = false;
 		}
 
-#region CommandParameter
+		#region CommandParameter
 
 		public object CommandParameter
 		{
@@ -232,7 +233,7 @@ namespace Windows.UI.Xaml.Controls.Primitives
 			((ButtonBase)dependencyObject)?.CoerceValue(IsEnabledProperty);
 		}
 
-#endregion
+		#endregion
 
 		// Might be changed if the method does not conflict in UnoViewGroup.
 		internal override bool IsViewHit()

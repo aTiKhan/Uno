@@ -227,6 +227,21 @@ namespace AppKit
 			}
 		}
 
+		/// <summary>
+		/// Add view to parent.
+		/// </summary>
+		/// <param name="parent">Parent view</param>
+		/// <param name="child">Child view to add</param>
+		public static void AddChild(this _View parent, _View child)
+		{
+			parent.AddSubview(child);
+		}
+
+		/// <summary>
+		/// Get the parent view in the visual tree. This may differ from the logical <see cref="FrameworkElement.Parent"/>.
+		/// </summary>
+		public static _View GetVisualTreeParent(this _View child) => child?.Superview;
+
 		public static IEnumerable<T> FindSubviewsOfType<T>(this _View view, int maxDepth = 20) where T : class
 		{
 			return FindSubviews(view, (v) => v as T != null, maxDepth)
@@ -287,26 +302,13 @@ namespace AppKit
 			view.Frame = new CGRect(view.Frame.X, view.Frame.Y, width ?? view.Frame.Width, height ?? view.Frame.Height);
 		}
 
-		public static _View FindFirstResponder(this _View view)
-		{
-#if __IOS__
-			if (view.IsFirstResponder)
-#elif __MACOS__
-			if (view.Window.FirstResponder == view)
-#endif
-			{
-				return view;
-			}
-			foreach (_View subView in view.Subviews)
-			{
-				var firstResponder = subView.FindFirstResponder();
-				if (firstResponder != null)
-				{
-					return firstResponder;
-				}
-			}
-			return null;
-		}
+		/// <summary>
+		/// Finds first responder in view
+		/// </summary>
+		/// <param name="view">View</param>
+		/// <returns>First responder view</returns>
+		public static _View FindFirstResponder(this _View view) =>
+			Uno.Extensions.UIViewExtensions.FindFirstResponder(view);		
 
 		/// <summary>
 		/// Finds the nearest view controller for this _View.
@@ -574,9 +576,21 @@ namespace AppKit
 
 			return sb.ToString();
 
-			void AppendView(_View innerView)
+			StringBuilder AppendView(_View innerView)
 			{
-				sb.AppendLine($"{spacing}{(innerView == viewOfInterest ? "*" : "")}>{innerView.ToString()}-({innerView.Frame.Width}x{innerView.Frame.Height})");
+				var name = (innerView as IFrameworkElement)?.Name;
+				var namePart = string.IsNullOrEmpty(name) ? "" : $"-'{name}'";
+
+				return sb
+						.Append(spacing)
+						.Append(innerView == viewOfInterest ? "*>" : ">")
+						.Append(innerView.ToString() + namePart)
+						.Append($"-({innerView.Frame.Width}x{innerView.Frame.Height})@({innerView.Frame.X},{innerView.Frame.Y})")
+
+#if __IOS__
+						.Append($" {(innerView.Hidden ? "Hidden" : "Visible")}")
+#endif
+						.AppendLine();
 			}
 		}
 
@@ -602,5 +616,14 @@ namespace AppKit
 			}
 			return ShowDescendants(root, viewOfInterest: view);
 		}
+
+		public static void SetNeedsDisplay(this _View view)
+		{
+#if __IOS__
+			view.SetNeedsDisplay();
+#elif __MACOS__
+			view.NeedsDisplay = true;
+#endif
+		} 
 	}
 }

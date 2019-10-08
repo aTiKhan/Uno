@@ -1,18 +1,21 @@
 ﻿#if XAMARIN_IOS
 
+using CoreGraphics;
+using UIKit;
 using Uno.Disposables;
+using Uno.UI;
 using Uno.UI.Common;
 using Uno.UI.DataBinding;
+using Windows.UI.Xaml.Controls.Primitives;
 using Windows.UI.Xaml.Data;
 
 namespace Windows.UI.Xaml.Controls
 {
-	public partial class TimePickerFlyout : Flyout
+	public partial class TimePickerFlyout : PickerFlyoutBase
 	{
 		private readonly SerialDisposable _onLoad = new SerialDisposable();
 		private readonly SerialDisposable _onUnloaded = new SerialDisposable();
 		internal protected TimePickerSelector _timeSelector;
-		internal protected TimePickerFlyoutPresenter _timePickerPresenter;
 		internal protected FrameworkElement _headerUntapZone;
 		private bool _isInitialized;
 
@@ -20,11 +23,22 @@ namespace Windows.UI.Xaml.Controls
 		{
 		}
 
+		protected override void InitializePopupPanel()
+		{
+			_popup.PopupPanel = new PickerFlyoutPopupPanel(this)
+			{
+				Visibility = Visibility.Collapsed,
+				Background = SolidColorBrushHelper.Transparent,
+				AutoresizingMask = UIViewAutoresizing.All,
+				Frame = new CGRect(CGPoint.Empty, ViewHelper.GetScreenSize())
+			};
+		}
+
 		/// <summary>
 		/// This method sets the Content property of the Flyout.
 		/// </summary>
 		/// <remarks>
-		/// Note that for performance reasons, we don't call it in the contructor. Instead, we wait for the popup to be opening.
+		/// Note that for performance reasons, we don't call it in the constructor. Instead, we wait for the popup to be opening.
 		/// The native UIDatePicker contained in the TimePickerSelector is known for being slow in general (https://bugzilla.xamarin.com/show_bug.cgi?id=49469).
 		/// Using this strategy means that a page containing a TimePicker will no longer be slowed down by this initialization during the page creation.
 		/// Instead, you'll see the delay when opening the TimePickerFlyout for the first time.
@@ -43,7 +57,8 @@ namespace Windows.UI.Xaml.Controls
 			{
 				BorderThickness = Thickness.Empty,
 				HorizontalAlignment = HorizontalAlignment.Stretch,
-				HorizontalContentAlignment = HorizontalAlignment.Stretch
+				HorizontalContentAlignment = HorizontalAlignment.Stretch,
+				Time = Time
 			};
 
 			Content = _timeSelector;
@@ -52,6 +67,38 @@ namespace Windows.UI.Xaml.Controls
 			this.Binding(nameof(MinuteIncrement), nameof(MinuteIncrement), Content, BindingMode.TwoWay);
 			this.Binding(nameof(ClockIdentifier), nameof(ClockIdentifier), Content, BindingMode.TwoWay);
 		}
+
+		#region Content DependencyProperty
+		internal IUIElement Content
+		{
+
+			get { return (IUIElement)this.GetValue(ContentProperty); }
+			set { this.SetValue(ContentProperty, value); }
+		}
+
+		internal static readonly DependencyProperty ContentProperty =
+			DependencyProperty.Register(
+				"Content",
+				typeof(IUIElement),
+				typeof(TimePickerFlyout),
+				new FrameworkPropertyMetadata(default(IUIElement), FrameworkPropertyMetadataOptions.AffectsMeasure, OnContentChanged));
+		private TimePickerFlyoutPresenter _timePickerPresenter;
+
+		private static void OnContentChanged(object dependencyObject, DependencyPropertyChangedEventArgs args)
+		{
+			var flyout = dependencyObject as TimePickerFlyout;
+
+			if (flyout._timePickerPresenter != null)
+			{
+				if (args.NewValue is IDependencyObjectStoreProvider binder)
+				{
+					binder.Store.SetValue(binder.Store.TemplatedParentProperty, flyout.TemplatedParent, DependencyPropertyValuePrecedences.Local);
+				}
+
+				flyout._timePickerPresenter.Content = args.NewValue;
+			}
+		}
+		#endregion
 
 		protected override Control CreatePresenter()
 		{

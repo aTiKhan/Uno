@@ -24,7 +24,7 @@ namespace Windows.UI.Xaml
 
 		protected FrameworkTemplate() { }
 
-		public FrameworkTemplate (Func<View> factory)
+		public FrameworkTemplate(Func<View> factory)
 		{
 			InitializeBinder();
 
@@ -55,7 +55,7 @@ namespace Windows.UI.Xaml
 		}
 
 		/// <summary>
-		/// Creates a new instace of the current template.
+		/// Creates a new instance of the current template.
 		/// </summary>
 		/// <returns>A new instance of the template</returns>
 		public View LoadContent()
@@ -79,6 +79,10 @@ namespace Windows.UI.Xaml
 		}
 
 		public override int GetHashCode() => _hashCode;
+
+#if DEBUG
+		public string TemplateSource => $"{_viewFactory?.Method.DeclaringType}.{_viewFactory?.Method.Name}";
+#endif
 
 		internal class FrameworkTemplateEqualityComparer : IEqualityComparer<FrameworkTemplate>
 		{

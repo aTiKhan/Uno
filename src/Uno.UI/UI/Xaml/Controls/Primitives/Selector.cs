@@ -45,8 +45,8 @@ namespace Windows.UI.Xaml.Controls.Primitives
 
 		public object SelectedItem
 		{
-			get { return (object)this.GetValue(SelectedItemProperty); }
-			set { this.SetValue(SelectedItemProperty, value); }
+			get => this.GetValue(SelectedItemProperty);
+			set => this.SetValue(SelectedItemProperty, value);
 		}
 
 		internal virtual void OnSelectedItemChanged(object oldSelectedItem, object selectedItem)
@@ -124,8 +124,8 @@ namespace Windows.UI.Xaml.Controls.Primitives
 
 		public int SelectedIndex
 		{
-			get { return (int)this.GetValue(SelectedIndexProperty); }
-			set { this.SetValue(SelectedIndexProperty, value); }
+			get => (int)this.GetValue(SelectedIndexProperty);
+			set => this.SetValue(SelectedIndexProperty, value);
 		}
 
 		// Using a DependencyProperty as the backing store for SelectedIndex.  This enables animation, styling, binding, etc...
@@ -155,7 +155,7 @@ namespace Windows.UI.Xaml.Controls.Primitives
 		public string SelectedValuePath
 		{
 			get => (string)this.GetValue(SelectedValuePathProperty);
-			set => SetValue(SelectedValuePathProperty, value);
+			set => this.SetValue(SelectedValuePathProperty, value);
 		}
 
 		public static global::Windows.UI.Xaml.DependencyProperty SelectedValuePathProperty { get; } =
@@ -168,8 +168,8 @@ namespace Windows.UI.Xaml.Controls.Primitives
 
 		public object SelectedValue
 		{
-			get => GetValue(SelectedValueProperty);
-			set => SetValue(SelectedValueProperty, value);
+			get => this.GetValue(SelectedValueProperty);
+			set => this.SetValue(SelectedValueProperty, value);
 		}
 
 		public static global::Windows.UI.Xaml.DependencyProperty SelectedValueProperty { get; } =
@@ -177,8 +177,53 @@ namespace Windows.UI.Xaml.Controls.Primitives
 			name: nameof(SelectedValue),
 			propertyType: typeof(object),
 			ownerType: typeof(Selector),
-			typeMetadata: new FrameworkPropertyMetadata(null)
+			typeMetadata: new FrameworkPropertyMetadata(null, SelectedValueChanged, SelectedValueCoerce)
 		);
+
+		private static void SelectedValueChanged(DependencyObject snd, DependencyPropertyChangedEventArgs args)
+		{
+			var selector = (Selector)snd;
+			if (selector?._path != null)
+			{
+				return; // Setting the SelectedValue won't update the index when a _path is used.
+			}
+			selector.SelectedIndex = selector.GetItems()?.IndexOf(args.NewValue) ?? -1;
+		}
+
+		private static object SelectedValueCoerce(DependencyObject snd, object baseValue)
+		{
+			var selector = (Selector)snd;
+			if (selector?._path != null)
+			{
+				return baseValue; // Setting the SelectedValue won't update the index when a _path is used.
+			}
+			return selector.GetItems()?.Contains(baseValue) ?? false ? baseValue : null;
+		}
+
+		public bool? IsSynchronizedWithCurrentItem
+		{
+			get => (bool?)GetValue(IsSynchronizedWithCurrentItemProperty);
+			set => SetValue(IsSynchronizedWithCurrentItemProperty, value);
+		}
+
+		public static DependencyProperty IsSynchronizedWithCurrentItemProperty { get; } =
+			Windows.UI.Xaml.DependencyProperty.Register(
+				nameof(IsSynchronizedWithCurrentItem),
+				typeof(bool?),
+				typeof(Selector),
+				new FrameworkPropertyMetadata(
+					default(bool?),
+					propertyChangedCallback: (s, e) => (s as Selector)?.IsSynchronizedWithCurrentItemChanged((bool?)e.OldValue, (bool?)e.NewValue)));
+
+		private void IsSynchronizedWithCurrentItemChanged(bool? oldValue, bool? newValue)
+		{
+			if(newValue == true)
+			{
+				throw new ArgumentOutOfRangeException("True is not a supported value for this property");
+			}
+
+			TrySubscribeToCurrentChanged();
+		}
 
 		/// <summary>
 		/// The selected index as an <see cref="IndexPath"/> of (group, group position), where group=0 if the source is ungrouped.
@@ -188,7 +233,14 @@ namespace Windows.UI.Xaml.Controls.Primitives
 		protected override void OnItemsSourceChanged(DependencyPropertyChangedEventArgs e)
 		{
 			base.OnItemsSourceChanged(e);
-			if (ItemsSource is ICollectionView collectionView)
+			TrySubscribeToCurrentChanged();
+		}
+
+		private void TrySubscribeToCurrentChanged()
+		{
+			var trackCurrentItem = IsSynchronizedWithCurrentItem ?? true;
+
+			if (ItemsSource is ICollectionView collectionView && trackCurrentItem)
 			{
 				// This is a workaround to support the use of EventRegistrationTokenTable in consumer code. EventRegistrationTokenTable 
 				// currently has a bug on Xamarin that prevents instance methods subscribed directly from ever being unsubscribed.

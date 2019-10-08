@@ -320,7 +320,7 @@ namespace Uno.UI.DataBinding
 		/// <returns>A <see cref="PropertyInfo"/> instance.</returns>
 		/// <remarks>
 		/// This method is required when searching in types that
-		/// include "new" non-virtual overriden members. In Mono 4.0 and
+		/// include "new" non-virtual overridden members. In Mono 4.0 and
 		/// earlier, the highest match would be returned, but the .NET core 
 		/// implementation found in Mono 4.2+ throws an ambiguous match exception.
 		/// This requires a recursive search using the <see cref="BindingFlags.DeclaredOnly"/> flag.
@@ -333,6 +333,31 @@ namespace Uno.UI.DataBinding
 			do
 			{
 				var info = type.GetProperty(
+					name,
+					BindingFlags.Instance
+					| BindingFlags.Static
+					| BindingFlags.Public
+					| (allowPrivateMembers ? BindingFlags.NonPublic : BindingFlags.Default)
+					| BindingFlags.DeclaredOnly
+				);
+
+				if (info != null)
+				{
+					return info;
+				}
+
+				type = type.BaseType;
+			}
+			while (type != null);
+
+			return null;
+		}
+
+		private static FieldInfo GetFieldInfo(Type type, string name, bool allowPrivateMembers)
+		{
+			do
+			{
+				var info = type.GetField(
 					name,
 					BindingFlags.Instance
 					| BindingFlags.Static
@@ -589,6 +614,16 @@ namespace Uno.UI.DataBinding
 					var handler = MethodInvokerBuilder(getMethod);
 
 					return instance => handler(instance, new object[0]);
+				}
+
+				// Look for a field (permitted for x:Bind only)
+				if (allowPrivateMembers)
+				{
+					var fieldInfo = GetFieldInfo(type, property, true);
+					if (fieldInfo != null)
+					{
+						return instance => fieldInfo.GetValue(instance);
+					}
 				}
 
 				// Look for an attached property
