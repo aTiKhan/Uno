@@ -61,6 +61,13 @@ namespace Windows.UI.Xaml.Controls
 			this.RemoveViewAndDispose(ContentTemplateRoot);
 		}
 
+		protected override void OnDraw(Android.Graphics.Canvas canvas)
+		{
+			AdjustCornerRadius(canvas, CornerRadius);
+		}
+
+		private void UpdateCornerRadius(CornerRadius radius) => UpdateBorder(false);
+
 		private void UpdateBorder()
 		{
 			UpdateBorder(false);
@@ -70,7 +77,7 @@ namespace Windows.UI.Xaml.Controls
 		{
 			if (IsLoaded)
 			{
-				_borderRenderer.UpdateLayers(
+				_borderRenderer.UpdateLayer(
 					this,
 					Background,
 					BorderThickness,
@@ -86,5 +93,9 @@ namespace Windows.UI.Xaml.Controls
 		{
 			UpdateBorder(true);
 		}
+
+		bool ICustomClippingElement.AllowClippingToLayoutSlot => true;
+
+		bool ICustomClippingElement.ForceClippingToLayoutSlot => CornerRadius != CornerRadius.None;
 	}
 }

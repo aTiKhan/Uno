@@ -7,23 +7,48 @@ using Windows.UI.Xaml.Media;
 using Uno.Logging;
 using Windows.Foundation;
 using System.Globalization;
+using Uno.Disposables;
 
 namespace Windows.UI.Xaml.Controls
 {
-	public partial class TextBoxView : FrameworkElement
+	internal partial class TextBoxView : FrameworkElement
 	{
 		private readonly TextBox _textBox;
+		private readonly SerialDisposable _foregroundChanged = new SerialDisposable();
 
-		public TextBoxView(TextBox textBox, bool isMultiline) : base(isMultiline ? "textarea" : "input")
+		public Brush Foreground
+		{
+			get => (Brush)GetValue(ForegroundProperty);
+			set => SetValue(ForegroundProperty, value);
+		}
+
+		internal static DependencyProperty ForegroundProperty { get; } =
+			DependencyProperty.Register(
+				name: "Foreground",
+				propertyType: typeof(Brush),
+				ownerType: typeof(TextBoxView),
+				typeMetadata: new FrameworkPropertyMetadata(
+					defaultValue: null,
+					options: FrameworkPropertyMetadataOptions.Inherits,
+					propertyChangedCallback: (s, e) => (s as TextBoxView)?.OnForegroundChanged(e)));
+
+		private void OnForegroundChanged(DependencyPropertyChangedEventArgs e)
+		{
+			_foregroundChanged.Disposable = null;
+			if (e.NewValue is SolidColorBrush scb)
+			{
+				_foregroundChanged.Disposable = Brush.AssignAndObserveBrush(scb, _ => this.SetForeground(e.NewValue));
+			}
+
+			this.SetForeground(e.NewValue);
+		}
+
+		public TextBoxView(TextBox textBox, bool isMultiline)
+			: base(isMultiline ? "textarea" : "input")
 		{
 			IsMultiline = isMultiline;
 			_textBox = textBox;
 			SetTextNative(_textBox.Text);
-
-			SetStyle(
-				("overflow-x", "visible"),
-				("overflow-y", "visible")
-			);
 
 			if (FeatureConfiguration.TextBox.HideCaret)
 			{
@@ -37,25 +62,25 @@ namespace Windows.UI.Xaml.Controls
 
 		private event EventHandler HtmlInput
 		{
-			add => RegisterEventHandler("input", value);
-			remove => UnregisterEventHandler("input", value);
+			add => RegisterEventHandler("input", value, GenericEventHandlers.RaiseEventHandler);
+			remove => UnregisterEventHandler("input", value, GenericEventHandlers.RaiseEventHandler);
 		}
 
 		internal bool IsMultiline { get; }
 
-		protected override void OnLoaded()
+		private protected override void OnLoaded()
 		{
 			base.OnLoaded();
-			
+
 			HtmlInput += OnInput;
 
 			SetTextNative(_textBox.Text);
 		}
 
-		protected override void OnUnloaded()
+		private protected override void OnUnloaded()
 		{
 			base.OnUnloaded();
-			
+
 			HtmlInput -= OnInput;
 		}
 
@@ -69,12 +94,18 @@ namespace Windows.UI.Xaml.Controls
 			{
 				SetTextNative(updatedText);
 			}
+
+			InvalidateMeasure();
 		}
 
 		internal void SetTextNative(string text)
 		{
 			SetProperty("value", text);
+
+			InvalidateMeasure();
 		}
+
+		protected override Size MeasureOverride(Size availableSize) => MeasureView(availableSize);
 
 		internal void SetIsPassword(bool isPassword)
 		{
@@ -85,14 +116,18 @@ namespace Windows.UI.Xaml.Controls
 			SetAttribute("type", isPassword ? "password" : "text");
 		}
 
-		protected override Size MeasureOverride(Size availableSize)
-		{
-			return MeasureView(availableSize);
-		}
+		internal void SetEnabled(bool newValue) => SetProperty("disabled", newValue ? "false" : "true");
 
-		internal void SetEnabled(bool newValue)
+		internal void SetIsReadOnly(bool isReadOnly)
 		{
-			SetProperty("disabled", newValue ? "false" : "true");
+			if (isReadOnly)
+			{
+				SetAttribute("readonly", "readonly");
+			}
+			else
+			{
+				RemoveAttribute("readonly");
+			}
 		}
 
 		public int SelectionStart
@@ -107,9 +142,6 @@ namespace Windows.UI.Xaml.Controls
 			set => SetProperty("selectionEnd", value.ToString());
 		}
 
-		internal override bool IsViewHit()
-		{
-			return true;
-		}
+		internal override bool IsViewHit() => true;
 	}
 }

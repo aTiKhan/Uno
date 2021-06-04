@@ -12,17 +12,18 @@ using System.Text;
 using Windows.Foundation;
 using Uno.UI.Xaml;
 using Microsoft.Extensions.Logging;
+using Uno.UI.Extensions;
 
 namespace Windows.UI.Xaml.Controls
 {
-	public partial class ScrollContentPresenter : ContentPresenter
+	public partial class ScrollContentPresenter : ContentPresenter, IScrollContentPresenter
 	{
 		private ScrollBarVisibility _verticalScrollBarVisibility;
-		private ScrollBarVisibility _horizotalScrollBarVisibility;
-		private ScrollMode _horizontalScrollMode1;
-		private ScrollMode _verticalScrollMode1;
+		private ScrollBarVisibility _horizontalScrollBarVisibility;
+		private bool _eventsRegistered;
 
-		private static readonly string[] HorizontalModeClasses = { "scrollmode-x-disabled", "scrollmode-x-enabled", "scrollmode-x-auto" };
+		private (double? horizontal, double? vertical)? _pendingScrollTo;
+		private FrameworkElement _rootEltUsedToProcessScrollTo;
 
 		internal Size ScrollBarSize
 		{
@@ -36,13 +37,29 @@ namespace Windows.UI.Xaml.Controls
 
 		public ScrollContentPresenter()
 		{
-			PointerReleased += ScrollViewer_PointerReleased;
-			PointerPressed += ScrollViewer_PointerPressed;
-			PointerCanceled += ScrollContentPresenter_PointerCanceled;
-			PointerMoved += ScrollContentPresenter_PointerMoved;
-			PointerEntered += ScrollContentPresenter_PointerEntered;
-			PointerExited += ScrollContentPresenter_PointerExited;
-			PointerWheelChanged += ScrollContentPresenter_PointerWheelChanged;
+		}
+
+		private void TryRegisterEvents(ScrollBarVisibility visibility)
+		{
+
+			if (
+				!_eventsRegistered
+				&& (visibility == ScrollBarVisibility.Auto || visibility == ScrollBarVisibility.Visible))
+			{
+				// Those events are only needed when native scrollbars are used, in order to handle
+				// pointer events on the native scrolbars themselves. See HandlePointerEvent for
+				// more details.
+
+				_eventsRegistered = true;
+
+				PointerReleased += ScrollViewer_PointerReleased;
+				PointerPressed += ScrollViewer_PointerPressed;
+				PointerCanceled += ScrollContentPresenter_PointerCanceled;
+				PointerMoved += ScrollContentPresenter_PointerMoved;
+				PointerEntered += ScrollContentPresenter_PointerEntered;
+				PointerExited += ScrollContentPresenter_PointerExited;
+				PointerWheelChanged += ScrollContentPresenter_PointerWheelChanged;
+			}
 		}
 
 		private void ScrollContentPresenter_PointerWheelChanged(object sender, Input.PointerRoutedEventArgs e)
@@ -75,7 +92,7 @@ namespace Windows.UI.Xaml.Controls
 
 			if (this.Log().IsEnabled(LogLevel.Debug))
 			{
-				this.Log().LogDebug($"{HtmlId}: {offsetSize} / {clientSize} / {e.GetCurrentPoint()}");
+				this.Log().LogDebug($"{HtmlId}: {offsetSize} / {clientSize} / {e.GetCurrentPoint(this)}");
 			}
 
 			if (!hasVerticalScroll && !hasHorizontalScroll)
@@ -83,12 +100,13 @@ namespace Windows.UI.Xaml.Controls
 				return;
 			}
 
-			// The events coming from the scrollbars are bubbled up
-			// to the the parents, as those are not (yey) XAML elements.
+			// The events coming from the native scrollbars are bubbled up
+			// to the parents, as those are not XAML elements.
 			// This can cause issues for popups with scrollable content and
 			// light dismiss patterns.
-			var isInVerticalScrollbar = hasVerticalScroll && e.GetCurrentPoint().X >= clientSize.Width;
-			var isInHorizontalScrollbar = hasHorizontalScroll && e.GetCurrentPoint().Y >= clientSize.Height;
+			var position = e.GetCurrentPoint(this).Position;
+			var isInVerticalScrollbar = hasVerticalScroll && position.X >= clientSize.Width;
+			var isInHorizontalScrollbar = hasHorizontalScroll && position.Y >= clientSize.Height;
 
 			if (isInVerticalScrollbar || isInHorizontalScrollbar)
 			{
@@ -96,141 +114,175 @@ namespace Windows.UI.Xaml.Controls
 			}
 		}
 
-		public ScrollMode HorizontalScrollMode
-		{
-			get => _horizontalScrollMode1;
-			set
-			{
-				_horizontalScrollMode1 = value;
-				SetClasses(HorizontalModeClasses, (int)value);
-			}
-		}
-
-		private static readonly string[] VerticalModeClasses = { "scrollmode-y-disabled", "scrollmode-y-enabled", "scrollmode-y-auto" };
-
-		public ScrollMode VerticalScrollMode
-		{
-			get => _verticalScrollMode1;
-			set
-			{
-				_verticalScrollMode1 = value;
-				SetClasses(VerticalModeClasses, (int)value);
-			}
-		}
-
-		public float MinimumZoomScale { get; private set; }
-
-		public float MaximumZoomScale { get; private set; }
-
 		private static readonly string[] VerticalVisibilityClasses = { "scroll-y-auto", "scroll-y-disabled", "scroll-y-hidden", "scroll-y-visible" };
 
-		public ScrollBarVisibility VerticalScrollBarVisibility
+		ScrollBarVisibility IScrollContentPresenter.VerticalScrollBarVisibility { get => VerticalScrollBarVisibility; set => VerticalScrollBarVisibility = value; }
+		internal ScrollBarVisibility VerticalScrollBarVisibility
 		{
-			get { return _verticalScrollBarVisibility; }
+			get => _verticalScrollBarVisibility;
 			set
 			{
-				_verticalScrollBarVisibility = value;
-				SetClasses(VerticalVisibilityClasses, (int)value);
+				if (_verticalScrollBarVisibility != value)
+				{
+					_verticalScrollBarVisibility = value;
+					SetClasses(VerticalVisibilityClasses, (int)value);
+
+					TryRegisterEvents(value);
+				}
 			}
 		}
 		private static readonly string[] HorizontalVisibilityClasses = { "scroll-x-auto", "scroll-x-disabled", "scroll-x-hidden", "scroll-x-visible" };
 
-		public ScrollBarVisibility HorizontalScrollBarVisibility
+		ScrollBarVisibility IScrollContentPresenter.HorizontalScrollBarVisibility { get => HorizontalScrollBarVisibility; set => HorizontalScrollBarVisibility = value; }
+		internal ScrollBarVisibility HorizontalScrollBarVisibility
 		{
-			get { return _horizotalScrollBarVisibility; }
+			get => _horizontalScrollBarVisibility;
 			set
 			{
-				_horizotalScrollBarVisibility = value;
-				SetClasses(HorizontalVisibilityClasses, (int)value);
+				if (_horizontalScrollBarVisibility != value)
+				{
+					_horizontalScrollBarVisibility = value;
+					SetClasses(HorizontalVisibilityClasses, (int)value);
+
+					TryRegisterEvents(value);
+				}
 			}
 		}
 
-		protected override Foundation.Size MeasureOverride(Foundation.Size size)
+		public bool CanHorizontallyScroll
 		{
-			var child = Content as UIElement;
-			if (child != null)
-			{
-				var slotSize = size;
-				if (VerticalScrollBarVisibility != ScrollBarVisibility.Disabled)
-				{
-					slotSize.Height = double.PositiveInfinity;
-				}
-				if (HorizontalScrollBarVisibility != ScrollBarVisibility.Disabled)
-				{
-					slotSize.Width = double.PositiveInfinity;
-				}
-
-				child.Measure(slotSize);
-
-				return new Size(
-					Math.Min(size.Width, child.DesiredSize.Width),
-					Math.Min(size.Height, child.DesiredSize.Height)
-				);
-			}
-
-			return new Foundation.Size(0, 0);
+			get => HorizontalScrollBarVisibility != ScrollBarVisibility.Disabled;
+			set { }
 		}
 
-		protected override Foundation.Size ArrangeOverride(Foundation.Size finalSize)
+		public bool CanVerticallyScroll
 		{
-			var child = Content as UIElement;
-			if (child != null)
-			{
-				var slotSize = finalSize;
-
-				var desiredChildSize = child.DesiredSize;
-
-				if (VerticalScrollBarVisibility != ScrollBarVisibility.Disabled)
-				{
-					slotSize.Height = Math.Max(desiredChildSize.Height, finalSize.Height);
-				}
-				if (HorizontalScrollBarVisibility != ScrollBarVisibility.Disabled)
-				{
-					slotSize.Width = Math.Max(desiredChildSize.Width, finalSize.Width);
-				}
-
-				child.Arrange(new Rect(new Point(0, 0), slotSize));
-			}
-
-			return finalSize;
+			get => VerticalScrollBarVisibility != ScrollBarVisibility.Disabled;
+			set { }
 		}
 
-		protected override void OnLoaded()
+		private protected override void OnLoaded()
 		{
 			base.OnLoaded();
-			RegisterEventHandler("scroll", (EventHandler)OnScroll);
+			RestoreScroll();
+			RegisterEventHandler("scroll", (EventHandler)OnScroll, GenericEventHandlers.RaiseEventHandler);
 		}
 
-		protected override void OnUnloaded()
+		private void RestoreScroll()
+		{
+			if (TemplatedParent is ScrollViewer sv)
+			{
+				if (sv.HorizontalOffset > 0 || sv.VerticalOffset > 0)
+				{
+					ScrollTo(sv.HorizontalOffset, sv.VerticalOffset, disableAnimation: true);
+				}
+			}
+		}
+
+		private protected override void OnUnloaded()
 		{
 			base.OnUnloaded();
-			UnregisterEventHandler("scroll", (EventHandler)OnScroll);
+			UnregisterEventHandler("scroll", (EventHandler)OnScroll, GenericEventHandlers.RaiseEventHandler);
+
+			if (_rootEltUsedToProcessScrollTo is {} rootElt)
+			{
+				rootElt.LayoutUpdated -= TryProcessScrollTo;
+				_rootEltUsedToProcessScrollTo = null;
+			}
+		}
+
+		/// <inheritdoc />
+		internal override void OnLayoutUpdated()
+		{
+			base.OnLayoutUpdated();
+
+			TryProcessScrollTo();
+		}
+
+		public void ScrollTo(double? horizontalOffset, double? verticalOffset, bool disableAnimation)
+		{
+			_pendingScrollTo = (horizontalOffset, verticalOffset);
+
+			WindowManagerInterop.ScrollTo(HtmlId, horizontalOffset, verticalOffset, disableAnimation);
+
+			if (_pendingScrollTo.HasValue)
+			{
+				// The scroll to was not processed by the native SCP, we need to re-request ScrollTo a bit later.
+				// This happen has soon as the native SCP element is not in a valid state (like un-arranged or hidden).
+
+				if (_rootEltUsedToProcessScrollTo is null && Window.Current.RootElement is FrameworkElement rootFwElt)
+				{
+					_rootEltUsedToProcessScrollTo = rootFwElt;
+					rootFwElt.LayoutUpdated += TryProcessScrollTo;
+				}
+
+				if (disableAnimation)
+				{
+					// As the native ScrollTo is going to be async, we manually raise the event with the provided values.
+					// If those values are invalid, the browser will raise the final event anyway.
+					// Note: If the caller has allowed animation, we assume that it's not interested by a sync response,
+					//		 we prefer to wait for the browser to effectively scroll.
+					(TemplatedParent as ScrollViewer)?.OnScrollInternal(
+						horizontalOffset ?? GetNativeHorizontalOffset(),
+						verticalOffset ?? GetNativeVerticalOffset(),
+						isIntermediate: false
+					);
+				}
+			}
+		}
+
+		private void TryProcessScrollTo(object sender, object e)
+			=> TryProcessScrollTo();
+
+		private void TryProcessScrollTo()
+		{
+			if (_pendingScrollTo is { } scrollTo)
+			{
+				WindowManagerInterop.ScrollTo(HtmlId, scrollTo.horizontal, scrollTo.vertical, disableAnimation: true);
+			}
 		}
 
 		private void OnScroll(object sender, EventArgs args)
 		{
-			var left = GetProperty("scrollLeft");
-			var top = GetProperty("scrollTop");
+			if (IsArrangeDirty && _pendingScrollTo.HasValue)
+			{
+				// When the native element of the SCP is becoming "valid" with a non 0 offset, it will raise a scroll event.
+				// But if we have a manual scroll request pending, we need to mute it and wait for the next layout updated.
+				return;
+			}
 
-			if (!double.TryParse(left, NumberStyles.Number, CultureInfo.InvariantCulture, out var horizontalOffset))
-			{
-				horizontalOffset = 0;
-			}
-			if (!double.TryParse(top, NumberStyles.Number, CultureInfo.InvariantCulture, out var verticalOffset))
-			{
-				verticalOffset = 0;
-			}
+			_pendingScrollTo = default;
+
+			// We don't have any information from the DOM 'scroll' event about the intermediate vs. final state.
+			// We could try to rely on the IsPointerPressed state to detect when the user is scrolling and use it.
+			// This would however not include scrolling due to the inertia which should also be flagged as intermediate.
+			// The main issue is that the IsPointerPressed be true ONLY when dragging the scrollbars with the mouse, 
+			// as for finger and pen we will get a PointerCancelled which will reset the pressed state to false.
+			// And it would also requires us to explicitly invoke OnScroll in PointerRelease in order to raise the
+			// final SV.ViewChanged event with a IsIntermediate == false.
+			// This is probably safer for now to always consider the scroll as final, even if it introduce a performance cost
+			// (the SV updates mode is always sync when isIntermediate is false).
+			var isIntermediate = false;
 
 			(TemplatedParent as ScrollViewer)?.OnScrollInternal(
-				horizontalOffset,
-				verticalOffset,
-				isIntermediate: false
+				GetNativeHorizontalOffset(),
+				GetNativeVerticalOffset(),
+				isIntermediate
 			);
 		}
 
-		internal override bool IsViewHit()
-		{
-			return true;
-		}
+		private double GetNativeHorizontalOffset()
+			=> double.TryParse(GetProperty("scrollLeft"), NumberStyles.Number, CultureInfo.InvariantCulture, out var horizontalOffset)
+				? horizontalOffset
+				: 0;
+
+		private double GetNativeVerticalOffset()
+			=> double.TryParse(GetProperty("scrollTop"), NumberStyles.Number, CultureInfo.InvariantCulture, out var verticalOffset)
+				? verticalOffset
+				: 0;
+
+		void IScrollContentPresenter.OnMinZoomFactorChanged(float newValue) { }
+
+		void IScrollContentPresenter.OnMaxZoomFactorChanged(float newValue) { }
 	}
 }

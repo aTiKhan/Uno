@@ -95,13 +95,16 @@ namespace Windows.UI.Xaml
 					HorizontalAlignment = HorizontalAlignment.Stretch,
 					Visibility = Visibility.Collapsed
 				};
+				FocusVisualLayer = new Canvas();
 
 				_main = new Grid()
 				{
+					IsVisualTreeRoot = true,
 					Children =
 					{
 						_rootBorder,
-						_fullWindow
+						_fullWindow,
+						FocusVisualLayer
 					}
 				};
 				
@@ -115,6 +118,8 @@ namespace Windows.UI.Xaml
 		}
 
 		private UIElement InternalGetContent() => _content;
+
+		private UIElement InternalGetRootElement() => _main;
 
 		private static Window InternalGetCurrentWindow()
 		{
@@ -137,7 +142,7 @@ namespace Windows.UI.Xaml
 				Bounds = newBounds;
 
 				RaiseSizeChanged(
-					new WindowSizeChangedEventArgs(
+					new Windows.UI.Core.WindowSizeChangedEventArgs(
 						new Windows.Foundation.Size((float)size.Width, (float)size.Height)
 					)
 				);
